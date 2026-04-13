@@ -2,7 +2,7 @@ import streamlit as st
 import random
 import math
 
-st.title("🧠 成長するAI（言語安定版）")
+st.title("🧠 成長するAI（言語収束版）")
 
 # ------------------------
 # 初期化
@@ -57,11 +57,10 @@ def update_relation(r, text):
     return max(-1, min(1, r))
 
 # ------------------------
-# 言語記憶（短文化）
+# 言語処理
 # ------------------------
 def compress_language(parts):
-    # 🔥 短くまとめる
-    return "、".join(parts[:2])  # 最大2要素
+    return "、".join(parts[:2])
 
 def clean_text(text):
     words = text.split("、")
@@ -71,20 +70,28 @@ def clean_text(text):
             unique.append(w)
     return "、".join(unique)
 
+# ------------------------
+# 🔥 優先度付き検索
+# ------------------------
 def find_similar(x, lang_memory):
     best = None
     best_score = 999
+    best_index = -1
 
-    for past_x, text in lang_memory:
-        diff = sum(abs(x[i]-past_x[i]) for i in range(len(x)))
-        if diff < best_score:
-            best_score = diff
+    for i, (past_x, text, weight) in enumerate(lang_memory):
+        diff = sum(abs(x[j]-past_x[j]) for j in range(len(x)))
+
+        score = diff / (weight + 0.1)
+
+        if score < best_score:
+            best_score = score
             best = text
+            best_index = i
 
-    return best, best_score
+    return best, best_index
 
 # ------------------------
-# 言語生成（安定版）
+# 言語生成
 # ------------------------
 def generate_response(x, prev_x, U, emotion, relation, personality, user_input, lang_memory):
     valence, energy, stability, novelty = analyze_state(x, prev_x, U)
@@ -108,14 +115,18 @@ def generate_response(x, prev_x, U, emotion, relation, personality, user_input, 
     if not parts:
         parts.append("よくわからない")
 
-    # 🔥 短文化
     base = compress_language(parts)
     base = clean_text(base)
 
-    # 🔥 過去参照（1個だけ）
-    past, score = find_similar(x, lang_memory)
-    if past and score < 3:
+    # 🔥 過去参照（1つだけ）
+    past, index = find_similar(x, lang_memory)
+
+    if past:
         base = f"{past}っぽい"
+
+        # 🔥 使用強化
+        px, pt, pw = lang_memory[index]
+        lang_memory[index] = (px, pt, pw + 1.0)
 
     # 性格
     tone = {
@@ -126,7 +137,7 @@ def generate_response(x, prev_x, U, emotion, relation, personality, user_input, 
 
     # 感情
     if emotion > 0.5:
-        base += "、ちょっと嬉しい"
+        base += "、嬉しい"
     elif emotion < -0.5:
         base += "、少し嫌だ"
 
@@ -138,7 +149,7 @@ def generate_response(x, prev_x, U, emotion, relation, personality, user_input, 
     else:
         prefix = ""
 
-    return f"{prefix}{base}{tone}", base  # 🔥 baseも返す
+    return f"{prefix}{base}{tone}", base
 
 # ------------------------
 # UI
@@ -177,8 +188,17 @@ if user_id:
             user_data["lang_memory"]
         )
 
-        # 🔥 短い言語だけ学習
-        user_data["lang_memory"].append((st.session_state.x[:], base))
+        # 🔥 新規追加（重複防止）
+        if base not in [t for _, t, _ in user_data["lang_memory"]]:
+            user_data["lang_memory"].append((st.session_state.x[:], base, 1.0))
+
+        # 🔥 忘却処理
+        new_memory = []
+        for px, pt, pw in user_data["lang_memory"]:
+            pw *= 0.995
+            if pw > 0.1:  # 消滅条件
+                new_memory.append((px, pt, pw))
+        user_data["lang_memory"] = new_memory[-50:]  # 上限
 
         st.write("🤖 AI:", response)
 
