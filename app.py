@@ -2,26 +2,22 @@ import streamlit as st
 import random
 import math
 
-st.title("🧠 成長するAI（完全版）")
+st.title("🧠 成長するAI（言語安定版）")
 
 # ------------------------
-# 安全初期化
+# 初期化
 # ------------------------
 if "initialized" not in st.session_state:
     N = 20
     st.session_state.x = [random.uniform(-0.5, 0.5) for _ in range(N)]
-    st.session_state.prev_x = st.session_state.x[:]  # 🔥 修正済み
+    st.session_state.prev_x = st.session_state.x[:]
     st.session_state.S = [random.random() for _ in range(N)]
     st.session_state.personality = random.choice(["friendly", "cool", "dark"])
     st.session_state.users = {}
     st.session_state.initialized = True
 
-# 念のため保険
-if "prev_x" not in st.session_state:
-    st.session_state.prev_x = st.session_state.x[:]
-
 # ------------------------
-# 状態更新
+# 基本関数
 # ------------------------
 def update_state(x, S, user_input):
     influence = sum(ord(c) for c in user_input) % 100 / 100.0
@@ -35,9 +31,6 @@ def compute_U(x):
     var = sum((xi - mean)**2 for xi in x)/len(x)
     return 1 / (1 + var)
 
-# ------------------------
-# 状態分析
-# ------------------------
 def analyze_state(x, prev_x, U):
     mean = sum(x)/len(x)
     var = sum((xi - mean)**2 for xi in x)/len(x)
@@ -64,8 +57,20 @@ def update_relation(r, text):
     return max(-1, min(1, r))
 
 # ------------------------
-# 言語記憶
+# 言語記憶（短文化）
 # ------------------------
+def compress_language(parts):
+    # 🔥 短くまとめる
+    return "、".join(parts[:2])  # 最大2要素
+
+def clean_text(text):
+    words = text.split("、")
+    unique = []
+    for w in words:
+        if w not in unique:
+            unique.append(w)
+    return "、".join(unique)
+
 def find_similar(x, lang_memory):
     best = None
     best_score = 999
@@ -79,7 +84,7 @@ def find_similar(x, lang_memory):
     return best, best_score
 
 # ------------------------
-# 言語生成
+# 言語生成（安定版）
 # ------------------------
 def generate_response(x, prev_x, U, emotion, relation, personality, user_input, lang_memory):
     valence, energy, stability, novelty = analyze_state(x, prev_x, U)
@@ -87,28 +92,30 @@ def generate_response(x, prev_x, U, emotion, relation, personality, user_input, 
     parts = []
 
     if valence > 0.2:
-        parts.append("少し楽しい")
+        parts.append("楽しい")
     elif valence < -0.2:
-        parts.append("少し嫌な感じ")
+        parts.append("違和感ある")
 
     if energy > 0.2:
-        parts.append("頭がざわついてる")
+        parts.append("ざわつく")
 
     if stability < 0.5:
-        parts.append("うまくまとまらない")
+        parts.append("まとまらない")
 
     if novelty > 0.1:
-        parts.append("新しい感じがする")
+        parts.append("新しい感じ")
 
     if not parts:
-        parts.append("まだよくわからない")
+        parts.append("よくわからない")
 
-    base = "、".join(parts)
+    # 🔥 短文化
+    base = compress_language(parts)
+    base = clean_text(base)
 
-    # 🔥 言語学習参照
+    # 🔥 過去参照（1個だけ）
     past, score = find_similar(x, lang_memory)
-    if past and score < 5:
-        base = f"{past}に近い感じがする"
+    if past and score < 3:
+        base = f"{past}っぽい"
 
     # 性格
     tone = {
@@ -125,13 +132,13 @@ def generate_response(x, prev_x, U, emotion, relation, personality, user_input, 
 
     # 関係
     if relation > 0.5:
-        prefix = "君と話してると"
+        prefix = "君と話すと"
     elif relation < -0.5:
         prefix = "正直言うと"
     else:
         prefix = ""
 
-    return f"{prefix}{user_input}って言われて、{base}{tone}"
+    return f"{prefix}{base}{tone}", base  # 🔥 baseも返す
 
 # ------------------------
 # UI
@@ -141,12 +148,10 @@ user_input = st.text_input("話しかけてみて")
 
 if user_id:
 
-    # ユーザー初期化
     if user_id not in st.session_state.users:
         st.session_state.users[user_id] = {
             "emotion": 0.0,
             "relation": 0.0,
-            "memory": [],
             "lang_memory": []
         }
 
@@ -161,7 +166,7 @@ if user_id:
         user_data["emotion"] = update_emotion(user_data["emotion"], user_input)
         user_data["relation"] = update_relation(user_data["relation"], user_input)
 
-        response = generate_response(
+        response, base = generate_response(
             st.session_state.x,
             st.session_state.prev_x,
             U,
@@ -172,15 +177,11 @@ if user_id:
             user_data["lang_memory"]
         )
 
-        # 学習
-        user_data["lang_memory"].append((st.session_state.x[:], response))
-        user_data["memory"].append(user_input)
+        # 🔥 短い言語だけ学習
+        user_data["lang_memory"].append((st.session_state.x[:], base))
 
         st.write("🤖 AI:", response)
 
-    # ------------------------
-    # 個人状態
-    # ------------------------
     st.subheader("あなたとの関係")
     st.write("感情:", round(user_data["emotion"], 3))
     st.write("関係:", round(user_data["relation"], 3))
