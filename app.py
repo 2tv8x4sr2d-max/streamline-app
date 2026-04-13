@@ -3,7 +3,7 @@ import random
 import time
 
 st.set_page_config(layout="wide")
-st.title("🧠 成長するAI（思考 / 発話 分離モデル）")
+st.title("🧠 成長するAI（思考 / 発話 分離＋遅延モデル）")
 
 # ------------------------
 # 初期化
@@ -17,7 +17,7 @@ if "initialized" not in st.session_state:
     st.session_state.initialized = True
 
 # ------------------------
-# 内面更新
+# 内面
 # ------------------------
 def update_internal(e, energy):
 
@@ -50,49 +50,35 @@ def update_drive(drive, energy, emotion):
     return drive
 
 # ------------------------
-# 🔥 内部行動（思考）
+# 内部行動（思考）
 # ------------------------
 def internal_action(drive):
 
     actions = []
 
     if drive["explore"] > 0.5:
-        actions.append("新しい考えを試す")
+        actions.append("新しいことを試したい")
 
     if drive["social"] > 0.5:
-        actions.append("誰かに問いを投げる")
+        actions.append("誰かと話したい")
 
     return actions
 
 # ------------------------
-# 🔥 行動結果（仮想）
+# 行動結果
 # ------------------------
 def simulate_outcome(action):
 
-    if "試す" in action:
-        success = random.random() < 0.5
-        return "成功した" if success else "うまくいかなかった"
+    if "試したい" in action:
+        return "成功" if random.random() < 0.5 else "失敗"
 
-    if "問い" in action:
+    if "話したい" in action:
         return "反応がある気がする"
 
     return "変化なし"
 
 # ------------------------
-# 記憶
-# ------------------------
-def store_memory(memory, text, emotion):
-
-    memory.append({
-        "text": text,
-        "value": round(abs(emotion) + random.uniform(0, 0.2), 3),
-        "emotion": round(emotion, 3)
-    })
-
-    return sorted(memory, key=lambda x: x["value"], reverse=True)[:10]
-
-# ------------------------
-# 🔥 内部思考生成
+# 思考生成
 # ------------------------
 def generate_thought(u):
 
@@ -102,36 +88,53 @@ def generate_thought(u):
 
     for act in actions:
         result = simulate_outcome(act)
+        thoughts.append(f"{act} → {result}")
 
-        # 記憶として保存
-        u["memory"] = store_memory(u["memory"], act + " → " + result, u["emotion"])
-
-        thoughts.append(act + "（" + result + "）")
-
-    # 感情ベース思考
     if u["emotion"] < -0.5:
         thoughts.append("なんかうまくいかない")
-
-    if u["drive"]["explore"] > 0.6:
-        thoughts.append("もっと試したい")
 
     return thoughts
 
 # ------------------------
-# 🔥 発話フィルタ
+# 🔥 発話フィルタ（ズレ含む）
 # ------------------------
-def select_speech(thoughts, drive):
+def transform_speech(thought):
 
-    if not thoughts:
+    if random.random() < 0.3:
+        return "…うまく言えないけど、" + thought
+
+    if random.random() < 0.2:
+        return thought + "…いや違うかも"
+
+    if random.random() < 0.2:
+        return "別に大したことじゃないけど、" + thought
+
+    return thought
+
+# ------------------------
+# 🔥 発話決定
+# ------------------------
+def decide_speech(u, user_input):
+
+    now = time.time()
+
+    # 応答優先
+    if user_input:
+        return "それについて考えてる：" + user_input
+
+    # クールダウン
+    if now - u["last_speak"] < 2.0:
         return None
 
-    # social高いと発話しやすい
-    if drive["social"] > 0.5:
-        return random.choice(thoughts)
+    prob = u["drive"]["social"]
 
-    # 低いとランダム
-    if random.random() < 0.2:
-        return random.choice(thoughts)
+    if random.random() < prob and u["thought_buffer"]:
+
+        u["last_speak"] = now
+
+        thought = u["thought_buffer"].pop()
+
+        return transform_speech(thought)
 
     return None
 
@@ -139,7 +142,7 @@ def select_speech(thoughts, drive):
 # UI
 # ------------------------
 user_id = st.text_input("名前")
-user_input = st.text_input("入力（空でもOK）")
+user_input = st.text_input("入力")
 
 if user_id:
 
@@ -147,7 +150,8 @@ if user_id:
         st.session_state.users[user_id] = {
             "emotion": 0.0,
             "drive": {"explore": 0.5, "social": 0.5},
-            "memory": [],
+            "thought_buffer": [],
+            "last_speak": 0
         }
 
     u = st.session_state.users[user_id]
@@ -161,8 +165,6 @@ if user_id:
 
     ticks = int(dt * 15)
 
-    all_thoughts = []
-
     for _ in range(max(1, ticks)):
 
         u["emotion"], st.session_state.energy = update_internal(
@@ -174,12 +176,14 @@ if user_id:
         )
 
         thoughts = generate_thought(u)
-        all_thoughts.extend(thoughts)
+
+        u["thought_buffer"].extend(thoughts)
+        u["thought_buffer"] = u["thought_buffer"][-20:]
 
     # ------------------------
     # 発話
     # ------------------------
-    speech = select_speech(all_thoughts, u["drive"])
+    speech = decide_speech(u, user_input)
 
     # ------------------------
     # 表示
@@ -188,7 +192,7 @@ if user_id:
 
     with col1:
         st.subheader("🧠 内部思考")
-        for t in all_thoughts[-5:]:
+        for t in u["thought_buffer"][-5:]:
             st.write("-", t)
 
     with col2:
@@ -204,14 +208,8 @@ if user_id:
     st.write("energy:", round(st.session_state.energy, 3))
     st.write("drive:", u["drive"])
 
-    st.subheader("🧠 記憶")
-    for m in u["memory"]:
-        st.write(m)
-
 # ------------------------
 # ループ
 # ------------------------
 time.sleep(0.3)
 st.rerun()
-
-
