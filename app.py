@@ -8,7 +8,7 @@ import math
 
 st.title("🧠 成長するAIプロトタイプ")
 
- N = 20
+N = 20
 # 初期化
 if "x" not in st.session_state:
     st.session_state.x = [random.uniform(-0.5, 0.5) for _ in range(N)]
