@@ -2,7 +2,7 @@ import streamlit as st
 import random
 import math
 
-st.title("🧠 成長するAI（内面駆動版）")
+st.title("🧠 成長するAI（意志＋可視化版）")
 
 # ------------------------
 # 初期化
@@ -13,11 +13,9 @@ if "initialized" not in st.session_state:
     st.session_state.prev_x = st.session_state.x[:]
     st.session_state.S = [random.random() for _ in range(N)]
     st.session_state.personality = random.choice(["friendly", "cool", "dark"])
-    st.session_state.users = {}
-
-    # 🔥 内面状態
     st.session_state.energy = random.uniform(0.3, 0.7)
 
+    st.session_state.users = {}
     st.session_state.initialized = True
 
 # ------------------------
@@ -35,55 +33,68 @@ def compute_U(x):
     var = sum((xi - mean)**2 for xi in x)/len(x)
     return 1 / (1 + var)
 
-def analyze_state(x, prev_x, U):
+def analyze_state(x, prev_x):
     mean = sum(x)/len(x)
     var = sum((xi - mean)**2 for xi in x)/len(x)
     diff = sum(abs(x[i]-prev_x[i]) for i in range(len(x))) / len(x)
-    return mean, var, U, diff
+    return mean, var, diff
 
 # ------------------------
-# 🔥 内面更新（超重要）
+# 内面更新
 # ------------------------
 def update_internal(e, energy, text):
 
-    # 外部影響
     if "好き" in text or "いい" in text:
         e += 0.2
     elif "嫌い" in text or "うざ" in text:
         e -= 0.3
 
-    # 🔥 内発ノイズ
     e += random.uniform(-0.05, 0.05)
-
-    # 🔥 エネルギー連動
     e += (energy - 0.5) * 0.1
-
-    # 減衰
     e *= 0.98
 
-    # baseline（停止防止）
     if abs(e) < 0.03:
         e += random.uniform(-0.1, 0.1)
 
-    # ------------------------
-    # エネルギー更新
-    # ------------------------
     energy += random.uniform(-0.05, 0.05)
-
-    # 感情と連動
     energy += e * 0.05
-
-    # 制限
     energy = max(0.0, min(1.0, energy))
 
     return max(-1, min(1, e)), energy
 
 # ------------------------
+# 関係更新
+# ------------------------
+def update_relation(r, text):
+    if "ありがとう" in text:
+        r += 0.2
+    elif "バカ" in text:
+        r -= 0.3
+    else:
+        r *= 0.99
+    return max(-1, min(1, r))
+
+# ------------------------
+# 欲求（restなし）
+# ------------------------
+def update_drive(drive, energy, emotion):
+    drive["explore"] += energy * 0.1 + random.uniform(-0.05, 0.05)
+    drive["social"] += emotion * 0.1 + random.uniform(-0.05, 0.05)
+
+    for k in drive:
+        drive[k] = max(0.0, min(1.0, drive[k]))
+
+    return drive
+
+def decide_action(drive):
+    return max(drive, key=drive.get)
+
+# ------------------------
 # 言語生成
 # ------------------------
-def generate_response(x, prev_x, U, emotion, energy, personality):
+def generate_response(x, prev_x, emotion, energy, drive, personality):
 
-    valence, _, _, novelty = analyze_state(x, prev_x, U)
+    valence, _, novelty = analyze_state(x, prev_x)
 
     parts = []
 
@@ -95,7 +106,7 @@ def generate_response(x, prev_x, U, emotion, energy, personality):
     if energy > 0.6:
         parts.append("動きたい")
     elif energy < 0.3:
-        parts.append("少しだるい")
+        parts.append("少し落ち着いてる")
 
     if novelty > 0.1:
         parts.append("新しい感じ")
@@ -105,6 +116,14 @@ def generate_response(x, prev_x, U, emotion, energy, personality):
 
     base = "、".join(parts[:2])
 
+    # 行動反映
+    action = decide_action(drive)
+
+    if action == "explore":
+        base += "、何か試したい"
+    elif action == "social":
+        base += "、もっと話したい"
+
     # 性格
     tone = {
         "friendly": "だね！",
@@ -112,13 +131,7 @@ def generate_response(x, prev_x, U, emotion, energy, personality):
         "dark": "…そうだな"
     }[personality]
 
-    # 感情反映
-    if emotion > 0.5:
-        base += "、ちょっと嬉しい"
-    elif emotion < -0.5:
-        base += "、少し嫌だ"
-
-    return base + tone
+    return base + tone, base
 
 # ------------------------
 # UI
@@ -130,7 +143,10 @@ if user_id:
 
     if user_id not in st.session_state.users:
         st.session_state.users[user_id] = {
-            "emotion": 0.0
+            "emotion": 0.0,
+            "relation": 0.0,
+            "drive": {"explore": 0.5, "social": 0.5},
+            "lang_memory": []
         }
 
     user_data = st.session_state.users[user_id]
@@ -144,28 +160,50 @@ if user_id:
             user_input
         )
 
-        U = compute_U(st.session_state.x)
-
-        # 🔥 内面更新
         user_data["emotion"], st.session_state.energy = update_internal(
             user_data["emotion"],
             st.session_state.energy,
             user_input
         )
 
-        response = generate_response(
+        user_data["relation"] = update_relation(
+            user_data["relation"],
+            user_input
+        )
+
+        user_data["drive"] = update_drive(
+            user_data["drive"],
+            st.session_state.energy,
+            user_data["emotion"]
+        )
+
+        response, base = generate_response(
             st.session_state.x,
             st.session_state.prev_x,
-            U,
             user_data["emotion"],
             st.session_state.energy,
+            user_data["drive"],
             st.session_state.personality
         )
 
+        # 言語記憶（可視化しやすく）
+        user_data["lang_memory"].append(base)
+        user_data["lang_memory"] = user_data["lang_memory"][-10:]
+
         st.write("🤖 AI:", response)
 
+    # ------------------------
+    # 可視化
+    # ------------------------
     st.subheader("あなたとの関係")
     st.write("感情:", round(user_data["emotion"], 3))
+    st.write("関係:", round(user_data["relation"], 3))
+
+    st.subheader("欲求")
+    st.write(user_data["drive"])
+
+    st.subheader("言語記憶")
+    st.write(user_data["lang_memory"])
 
 # ------------------------
 # 内部状態
@@ -173,10 +211,9 @@ if user_id:
 st.subheader("AIの内部状態")
 
 U_now = compute_U(st.session_state.x)
-valence, _, _, novelty = analyze_state(
+valence, _, novelty = analyze_state(
     st.session_state.x,
-    st.session_state.prev_x,
-    U_now
+    st.session_state.prev_x
 )
 
 st.write("安定度 U:", round(U_now, 3))
