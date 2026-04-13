@@ -1,8 +1,9 @@
+
 import streamlit as st
 import random
 import math
 
-st.title("🧠 成長するAI（言語収束版）")
+st.title("🧠 成長するAI（進化版：探索＋人格）")
 
 # ------------------------
 # 初期化
@@ -64,14 +65,10 @@ def compress_language(parts):
 
 def clean_text(text):
     words = text.split("、")
-    unique = []
-    for w in words:
-        if w not in unique:
-            unique.append(w)
-    return "、".join(unique)
+    return "、".join(dict.fromkeys(words))  # 重複削除
 
 # ------------------------
-# 🔥 優先度付き検索
+# 優先度検索
 # ------------------------
 def find_similar(x, lang_memory):
     best = None
@@ -80,7 +77,6 @@ def find_similar(x, lang_memory):
 
     for i, (past_x, text, weight) in enumerate(lang_memory):
         diff = sum(abs(x[j]-past_x[j]) for j in range(len(x)))
-
         score = diff / (weight + 0.1)
 
         if score < best_score:
@@ -91,7 +87,7 @@ def find_similar(x, lang_memory):
     return best, best_index
 
 # ------------------------
-# 言語生成
+# 🔥 言語生成（進化版）
 # ------------------------
 def generate_response(x, prev_x, U, emotion, relation, personality, user_input, lang_memory):
     valence, energy, stability, novelty = analyze_state(x, prev_x, U)
@@ -115,29 +111,48 @@ def generate_response(x, prev_x, U, emotion, relation, personality, user_input, 
     if not parts:
         parts.append("よくわからない")
 
-    base = compress_language(parts)
-    base = clean_text(base)
+    base = clean_text(compress_language(parts))
 
-    # 🔥 過去参照（1つだけ）
-    past, index = find_similar(x, lang_memory)
+    # ------------------------
+    # 🔥 探索 vs 利用
+    # ------------------------
+    use_memory = True
 
-    if past:
-        base = f"{past}っぽい"
+    # 感情で変える（面白いポイント）
+    if emotion > 0.5:
+        explore_rate = 0.4
+    elif emotion < -0.5:
+        explore_rate = 0.3
+    else:
+        explore_rate = 0.2
 
-        # 🔥 使用強化
-        px, pt, pw = lang_memory[index]
-        lang_memory[index] = (px, pt, pw + 1.0)
+    if random.random() < explore_rate:
+        use_memory = False
 
-    # 性格
-    tone = {
-        "friendly": "だね！",
-        "cool": "だな",
-        "dark": "…そうだな"
-    }[personality]
+    if use_memory and len(lang_memory) > 0:
+        past, index = find_similar(x, lang_memory)
+
+        if past:
+            base = f"{past}っぽい"
+
+            # 強化（上限あり）
+            px, pt, pw = lang_memory[index]
+            pw = min(pw + 1.0, 5.0)
+            lang_memory[index] = (px, pt, pw)
+
+    # ------------------------
+    # 🔥 性格分岐
+    # ------------------------
+    if personality == "friendly":
+        tone = "だね！"
+    elif personality == "cool":
+        tone = "だな"
+    else:
+        tone = "…そうだな"
 
     # 感情
     if emotion > 0.5:
-        base += "、嬉しい"
+        base += "、ちょっと嬉しい"
     elif emotion < -0.5:
         base += "、少し嫌だ"
 
@@ -188,17 +203,18 @@ if user_id:
             user_data["lang_memory"]
         )
 
-        # 🔥 新規追加（重複防止）
+        # 新規記憶
         if base not in [t for _, t, _ in user_data["lang_memory"]]:
             user_data["lang_memory"].append((st.session_state.x[:], base, 1.0))
 
-        # 🔥 忘却処理
+        # 忘却
         new_memory = []
         for px, pt, pw in user_data["lang_memory"]:
             pw *= 0.995
-            if pw > 0.1:  # 消滅条件
+            if pw > 0.1:
                 new_memory.append((px, pt, pw))
-        user_data["lang_memory"] = new_memory[-50:]  # 上限
+
+        user_data["lang_memory"] = new_memory[-50:]
 
         st.write("🤖 AI:", response)
 
