@@ -2,19 +2,23 @@ import streamlit as st
 import random
 import math
 
-st.title("🧠 成長するAI（個人依存版）")
+st.title("🧠 成長するAI（完全版）")
 
 # ------------------------
-# 初期化
+# 安全初期化
 # ------------------------
-if "x" not in st.session_state:
+if "initialized" not in st.session_state:
     N = 20
     st.session_state.x = [random.uniform(-0.5, 0.5) for _ in range(N)]
-    st.session_state.prev_x = st.session_state.x[:]
+    st.session_state.prev_x = st.session_state.x[:]  # 🔥 修正済み
     st.session_state.S = [random.random() for _ in range(N)]
     st.session_state.personality = random.choice(["friendly", "cool", "dark"])
+    st.session_state.users = {}
+    st.session_state.initialized = True
 
-    st.session_state.users = {}  # 🔥 ユーザー別管理
+# 念のため保険
+if "prev_x" not in st.session_state:
+    st.session_state.prev_x = st.session_state.x[:]
 
 # ------------------------
 # 状態更新
@@ -101,7 +105,7 @@ def generate_response(x, prev_x, U, emotion, relation, personality, user_input, 
 
     base = "、".join(parts)
 
-    # 🔥 個人ごとの言語記憶
+    # 🔥 言語学習参照
     past, score = find_similar(x, lang_memory)
     if past and score < 5:
         base = f"{past}に近い感じがする"
@@ -119,7 +123,7 @@ def generate_response(x, prev_x, U, emotion, relation, personality, user_input, 
     elif emotion < -0.5:
         base += "、少し嫌だ"
 
-    # 関係（ここが個人差）
+    # 関係
     if relation > 0.5:
         prefix = "君と話してると"
     elif relation < -0.5:
@@ -136,6 +140,8 @@ user_id = st.text_input("あなたの名前（ID）")
 user_input = st.text_input("話しかけてみて")
 
 if user_id:
+
+    # ユーザー初期化
     if user_id not in st.session_state.users:
         st.session_state.users[user_id] = {
             "emotion": 0.0,
@@ -166,23 +172,22 @@ if user_id:
             user_data["lang_memory"]
         )
 
-        # 🔥 個人ごとに学習
+        # 学習
         user_data["lang_memory"].append((st.session_state.x[:], response))
         user_data["memory"].append(user_input)
 
         st.write("🤖 AI:", response)
 
     # ------------------------
-    # 可視化（個人別）
+    # 個人状態
     # ------------------------
     st.subheader("あなたとの関係")
-
     st.write("感情:", round(user_data["emotion"], 3))
     st.write("関係:", round(user_data["relation"], 3))
-    st.write("言語記憶数:", len(user_data["lang_memory"]))
+    st.write("言語記憶:", len(user_data["lang_memory"]))
 
 # ------------------------
-# 共通状態
+# AI状態
 # ------------------------
 st.subheader("AIの内部状態")
 
