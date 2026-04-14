@@ -3,7 +3,7 @@ import random
 import time
 
 st.set_page_config(layout="wide")
-st.title("🧠 成長するAI『マザー』（再構成発話モデル）")
+st.title("🧠 成長するAI『マザー』（安定版）")
 
 # ------------------------
 # 設定
@@ -58,18 +58,15 @@ def trim_memory(u, max_mem=80):
     )[:max_mem]
 
 # ------------------------
-# 🔥 記憶サンプリング（強＋弱）
+# 記憶サンプリング（強＋弱）
 # ------------------------
 def sample_memories(u):
-
     if not u["memory"]:
         return []
 
     sorted_mem = sorted(u["memory"], key=lambda x: x["weight"], reverse=True)
 
     strong = sorted_mem[0]
-
-    # 弱い記憶をランダム取得
     weak_candidates = sorted_mem[1:]
     weak = random.choice(weak_candidates) if weak_candidates else strong
 
@@ -92,7 +89,6 @@ def update_internal(e, energy):
 # 欲求
 # ------------------------
 def update_drive(drive, energy, emotion):
-
     drive["explore"] += 0.02 + energy * 0.05
     drive["social"] += 0.01 + emotion * 0.05
 
@@ -132,22 +128,20 @@ def apply_action(u):
 # 思考
 # ------------------------
 def generate_thought(u):
-
     thoughts = []
 
     if u["memory"]:
-        thoughts.append("いくつかの記憶が混ざっている感じがする")
+        thoughts.append("記憶が混ざっている感じ")
 
     if u["drive"]["explore"] > 0.6:
-        thoughts.append("試してみたい衝動がある")
+        thoughts.append("何か試したい")
 
     return thoughts
 
 # ------------------------
-# 🔥 発話（再構成）
+# 発話（再構成）
 # ------------------------
 def generate_response(u):
-
     mems = sample_memories(u)
     e = u["emotion"]
 
@@ -156,29 +150,23 @@ def generate_response(u):
 
     texts = [m["text"] for m in mems]
 
-    # 🔥 テンプレ多様化
     patterns = [
-        "{}がまだ頭にある",
-        "{}が少し混ざってる感じがする",
-        "{}についてうまく整理できてない",
-        "{}が残ってる気がする",
-        "{}が引っかかってる"
+        "{}が頭に残っている",
+        "{}が少し混ざっている",
+        "{}について考えている",
+        "{}が引っかかっている",
+        "{}が気になる"
     ]
 
     combined = "と".join(texts)
     line = random.choice(patterns).format(combined)
 
-    # 感情補正
     if e > 0.4:
-        line += "（少し前向き）"
+        line += "（前向き）"
     elif e < -0.4:
-        line += "（少し引っかかる）"
+        line += "（少し違和感）"
 
-    # 揺らぎ
-    r = random.random()
-    if r < 0.3:
-        line = "…うまく言えないけど、" + line
-    elif r < 0.6:
+    if random.random() < 0.5:
         line += "かもしれない"
 
     return line
@@ -187,7 +175,6 @@ def generate_response(u):
 # 発話制御
 # ------------------------
 def decide_speech(u, user_input):
-
     now = time.time()
 
     if now - u["last_speak"] < 1.2:
@@ -227,7 +214,6 @@ if user_id:
     st.session_state.last_time = now
 
     for _ in range(int(dt * 10)):
-
         u["emotion"], st.session_state.energy = update_internal(
             u["emotion"], st.session_state.energy
         )
@@ -252,21 +238,22 @@ if user_id:
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("🧠 思考")
+        st.subheader("思考")
         for t in u["thought_buffer"][-5:]:
             st.write("-", t)
 
     with col2:
-        st.subheader("💬 マザー")
-        st.write(speech if speech else "…")
+        st.subheader("マザー")
+        st.write(speech if speech else "...")
 
-    st.subheader("📊 状態")
+    st.subheader("状態")
     st.write("emotion:", round(u["emotion"], 3))
     st.write("drive:", u["drive"])
 
-    st.subheader("🧩 記憶")
-    
-    for m in sorted(u["memory"], key=lambda x: x["weight"], reverse=True)[:10]:
+    st.subheader("記憶")
+    for m in sorted(
+        u["memory"], key=lambda x: x["weight"], reverse=True
+    )[:10]:
         st.write({
             "text": m["text"],
             "weight": round(m["weight"], 3),
@@ -274,20 +261,12 @@ if user_id:
             "type": m["type"]
         })
 
-    st.subheader("🧩 記憶（詳細）")
-
-    for m in sorted(
-        u["memory"], key=lambda x: x["weight"], reverse=True)[:10]:
-    　　　st.write({
-          text": m["text"],
-            "weight": round(m["weight"], 3),
-            "count": m["count"],
-            "type": m["type"]
-        })
-
-# ループ
+# ------------------------
+# ループ（最後）
+# ------------------------
 time.sleep(0.3)
 st.rerun()
+
 
 
 
