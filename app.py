@@ -3,7 +3,7 @@ import random
 import time
 
 st.set_page_config(layout="wide")
-st.title("🧠 成長するAI『マザー』（階層思考モデル）")
+st.title("🧠 成長するAI『マザー』（感情統合モデル）")
 
 # ------------------------
 # 初期化
@@ -49,6 +49,26 @@ def learn_words(text, u):
             u["word_memory"][w] += 1
 
 # ------------------------
+# 🔥 感情更新（追加）
+# ------------------------
+def update_emotion(text, u):
+
+    if "嬉しい" in text or "楽しい" in text:
+        u["emotion"]["joy"] += 0.2
+        u["emotion"]["fun"] += 0.2
+
+    if "嫌い" in text or "ムカつく" in text:
+        u["emotion"]["anger"] += 0.3
+
+    if "悲しい" in text:
+        u["emotion"]["sadness"] += 0.3
+
+    # 減衰
+    for k in u["emotion"]:
+        u["emotion"][k] *= 0.95
+        u["emotion"][k] = min(1.0, max(0.0, u["emotion"][k]))
+
+# ------------------------
 # 記憶サンプリング
 # ------------------------
 def sample_memories(u):
@@ -73,7 +93,7 @@ def interpret(text):
     return intent
 
 # ------------------------
-# 🔥 深層心理（追加）
+# 深層心理
 # ------------------------
 def deep_think(u):
 
@@ -88,10 +108,20 @@ def deep_think(u):
     if u["memory"]:
         thoughts.append("記憶に引っ張られている")
 
+    # 🔥 感情影響
+    if u["emotion"]["anger"] > 0.5:
+        thoughts.append("イライラしている")
+
+    if u["emotion"]["joy"] > 0.5:
+        thoughts.append("少し満たされている")
+
+    if u["emotion"]["sadness"] > 0.5:
+        thoughts.append("落ち込んでいる")
+
     return thoughts
 
 # ------------------------
-# 🔥 表面思考（追加）
+# 表面思考
 # ------------------------
 def surface_think(deep_thoughts):
 
@@ -107,6 +137,15 @@ def surface_think(deep_thoughts):
 
         elif "記憶" in t:
             surface.append("過去を思い出している")
+
+        elif "イライラ" in t:
+            surface.append("少し苛立ちがある")
+
+        elif "満たされている" in t:
+            surface.append("少し落ち着いている")
+
+        elif "落ち込んでいる" in t:
+            surface.append("気分が沈んでいる")
 
         else:
             surface.append(t)
@@ -144,12 +183,13 @@ def verbalize(thoughts, intent, u):
         else:
             line = combined + "がよくわからない"
 
-    e = u.get("emotion", 0)
-
-    if e > 0.4:
-        line += "（前向き）"
-    elif e < -0.4:
-        line += "（違和感）"
+    # 🔥 感情ニュアンス
+    if u["emotion"]["anger"] > 0.5:
+        line += "（少し苛立ち）"
+    elif u["emotion"]["joy"] > 0.5:
+        line += "（少しポジティブ）"
+    elif u["emotion"]["sadness"] > 0.5:
+        line += "（少し沈んでいる）"
 
     return line
 
@@ -166,7 +206,7 @@ if user_id:
             "memory": [],
             "word_memory": {},
             "uncertainty": 0.3,
-            "emotion": 0.0,
+            "emotion": {"joy": 0.0, "anger": 0.0, "sadness": 0.0, "fun": 0.0},
             "thought_buffer": [],
             "speech_log": []
         }
@@ -176,11 +216,11 @@ if user_id:
     if user_input:
         store_memory(user_input, u)
         learn_words(user_input, u)
+        update_emotion(user_input, u)
 
         intent = interpret(user_input)
         u["uncertainty"] = intent["uncertainty"]
 
-        # 🔥 ここだけ変更（階層化）
         deep = deep_think(u)
         surface = surface_think(deep)
 
@@ -208,9 +248,8 @@ if user_id:
         for s in u["speech_log"][-5:]:
             st.write("-", s)
 
-    st.subheader("📊 状態")
-    st.write("uncertainty:", round(u["uncertainty"], 3))
-    st.write("emotion:", round(u["emotion"], 3))
+    st.subheader("📊 感情状態")
+    st.write(u["emotion"])
 
     st.subheader("🧩 記憶")
     for m in sorted(u["memory"], key=lambda x: x["weight"], reverse=True)[:5]:
