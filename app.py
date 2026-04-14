@@ -3,20 +3,15 @@ import random
 import time
 
 st.set_page_config(layout="wide")
-st.title("🧠 成長するAI『マザー』（可視化強化版）")
+st.title("🧠 成長するAI『マザー』（自己改善モデル）")
 
-# ------------------------
-# 設定
-# ------------------------
 MIN_WEIGHT = 0.2
-LONG_THRESHOLD = 2.5
 
 # ------------------------
 # 初期化
 # ------------------------
 if "initialized" not in st.session_state:
     st.session_state.users = {}
-    st.session_state.energy = 0.5
     st.session_state.last_time = time.time()
     st.session_state.initialized = True
 
@@ -25,144 +20,92 @@ if "initialized" not in st.session_state:
 # ------------------------
 def store_memory(text, u):
     for m in u["memory"]:
-        if text in m["text"] or m["text"] in text:
-            m["weight"] += 0.7
-            m["count"] += 1
+        if text in m["text"]:
+            m["weight"] += 0.5
             return
-
-    u["memory"].append({
-        "text": text,
-        "weight": 1.0,
-        "count": 1,
-        "type": "short"
-    })
-
-def decay_memory(u):
-    for m in u["memory"]:
-        if m["type"] == "long":
-            m["weight"] *= 0.998
-        else:
-            m["weight"] *= 0.995
-
-        if m["weight"] < MIN_WEIGHT:
-            m["weight"] = MIN_WEIGHT
-
-def update_memory_type(u):
-    for m in u["memory"]:
-        if m["weight"] > LONG_THRESHOLD:
-            m["type"] = "long"
-
-def trim_memory(u):
-    u["memory"] = sorted(u["memory"], key=lambda x: x["weight"], reverse=True)[:80]
+    u["memory"].append({"text": text, "weight": 1.0})
 
 # ------------------------
-# 記憶サンプリング
+# 解釈（？理解）
 # ------------------------
-def sample_memories(u):
-    if not u["memory"]:
-        return []
+def interpret(text):
+    intent = {"type": "statement", "uncertainty": 0.3}
 
-    sorted_mem = sorted(u["memory"], key=lambda x: x["weight"], reverse=True)
+    if "?" in text or "？" in text:
+        intent["type"] = "question"
+        intent["uncertainty"] += 0.3
 
-    strong = sorted_mem[0]
-    weak = random.choice(sorted_mem[1:]) if len(sorted_mem) > 1 else strong
+    if len(text) < 5:
+        intent["uncertainty"] += 0.2
 
-    return [strong, weak]
-
-# ------------------------
-# 内部状態
-# ------------------------
-def update_internal(e, energy):
-    e += random.uniform(-0.02, 0.02)
-    e += (energy - 0.5) * 0.1
-    e *= 0.99
-
-    energy += random.uniform(-0.02, 0.02)
-    energy += e * 0.05
-
-    return max(-1, min(1, e)), max(0, min(1, energy))
-
-# ------------------------
-# 欲求
-# ------------------------
-def update_drive(drive, energy, emotion):
-    drive["explore"] += 0.02 + energy * 0.05
-    drive["social"] += 0.01 + emotion * 0.05
-
-    drive["explore"] -= drive["social"] * 0.02
-    drive["social"] -= drive["explore"] * 0.02
-
-    for k in drive:
-        drive[k] *= 0.995
-        drive[k] = max(0, min(1, drive[k]))
-
-    drive["explore"] = max(0.3, drive["explore"])
-
-    return drive
+    return intent
 
 # ------------------------
 # 思考
 # ------------------------
-def generate_thought(u):
+def think(u):
     thoughts = []
 
     if u["memory"]:
-        thoughts.append("記憶が混ざっている")
+        thoughts.append("記憶を参照している")
 
-    if u["drive"]["explore"] > 0.6:
-        thoughts.append("試したい欲求がある")
+    if u["uncertainty"] > 0.6:
+        thoughts.append("よくわからない")
+
+    if random.random() < 0.5:
+        thoughts.append("何か考えようとしている")
 
     return thoughts
 
 # ------------------------
-# 発話（理由付き）
+# 発話（変換）
 # ------------------------
-def generate_response(u):
-    mems = sample_memories(u)
-    e = u["emotion"]
+def verbalize(thoughts, intent, u):
 
-    if not mems:
-        return "まだ不明", "記憶なし"
+    if u["uncertainty"] > 0.7:
+        return "まだうまく理解できてない"
 
-    texts = [m["text"] for m in mems]
+    base = random.choice(thoughts) if thoughts else "何かある"
 
     patterns = [
-        "{}が残っている",
-        "{}が混ざっている",
-        "{}について考えている",
-        "{}が気になる"
+        "{}気がする",
+        "{}かもしれない",
+        "なんとなく{}",
+        "{}感じがある"
     ]
 
-    combined = "と".join(texts)
-    line = random.choice(patterns).format(combined)
+    if intent["type"] == "question":
+        return "まだはっきりしないけど、少し考えてる"
 
-    reason = f"記憶: {texts}"
-
-    if e > 0.4:
-        line += "（前向き）"
-    elif e < -0.4:
-        line += "（違和感）"
-
-    return line, reason
+    return random.choice(patterns).format(base)
 
 # ------------------------
-# 発話制御
+# 自己評価
 # ------------------------
-def decide_speech(u, user_input):
-    now = time.time()
+def evaluate_speech(text):
+    score = 0.5
 
-    if now - u["last_speak"] < 1.0:
-        return None, None
+    if "わからない" in text:
+        score -= 0.2
 
-    u["last_speak"] = now
+    if "気がする" in text:
+        score += 0.1
 
-    if user_input:
-        return generate_response(u)
+    if len(text) > 10:
+        score += 0.2
 
-    if u["thought_buffer"]:
-        return u["thought_buffer"].pop(), "思考出力"
+    return max(0, min(1, score))
 
-    return None, None
+# ------------------------
+# 改善
+# ------------------------
+def improve(u, score):
+
+    if score < 0.4:
+        u["uncertainty"] += 0.1
+
+    if score > 0.7:
+        u["uncertainty"] *= 0.9
 
 # ------------------------
 # UI
@@ -174,84 +117,52 @@ if user_id:
 
     if user_id not in st.session_state.users:
         st.session_state.users[user_id] = {
-            "emotion": 0.0,
-            "drive": {"explore": 0.5, "social": 0.5},
             "memory": [],
-            "thought_buffer": [],
+            "uncertainty": 0.3,
             "speech_log": [],
-            "thought_log": [],
-            "decision_log": [],
-            "last_speak": 0
+            "eval_log": []
         }
 
     u = st.session_state.users[user_id]
 
-    now = time.time()
-    dt = now - st.session_state.last_time
-    st.session_state.last_time = now
-
-    for _ in range(int(dt * 10)):
-        u["emotion"], st.session_state.energy = update_internal(
-            u["emotion"], st.session_state.energy
-        )
-
-        u["drive"] = update_drive(
-            u["drive"], st.session_state.energy, u["emotion"]
-        )
-
-        decay_memory(u)
-        update_memory_type(u)
-
-        thoughts = generate_thought(u)
-        u["thought_buffer"].extend(thoughts)
-        u["thought_log"].extend(thoughts)
-
     if user_input:
         store_memory(user_input, u)
 
-    trim_memory(u)
+        intent = interpret(user_input)
+        u["uncertainty"] = intent["uncertainty"]
 
-    speech, reason = decide_speech(u, user_input)
+        thoughts = think(u)
+        speech = verbalize(thoughts, intent, u)
 
-    if speech:
+        score = evaluate_speech(speech)
+        improve(u, score)
+
         u["speech_log"].append(speech)
-        u["decision_log"].append(reason)
+        u["eval_log"].append(score)
 
     # ------------------------
-    # UI表示
+    # 表示
     # ------------------------
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("🧠 思考履歴")
-        for t in u["thought_log"][-10:]:
+        st.subheader("🧠 思考")
+        for t in thoughts[-5:] if user_input else []:
             st.write("-", t)
 
     with col2:
-        st.subheader("💬 発言履歴")
-        for i, s in enumerate(reversed(u["speech_log"][-10:])):
-            if i == 0:
-                st.write("👉", s)
-            else:
-                st.write(s)
-
-    st.subheader("⚙ 内部判断")
-    for d in u["decision_log"][-5:]:
-        st.write("-", d)
+        st.subheader("💬 発話履歴")
+        for s in u["speech_log"][-10:]:
+            st.write("-", s)
 
     st.subheader("📊 状態")
-    st.write("emotion:", round(u["emotion"], 3))
-    st.write("energy:", round(st.session_state.energy, 3))
-    st.write("drive:", u["drive"])
+    st.write("uncertainty:", round(u["uncertainty"], 3))
 
-    st.subheader("🧩 記憶")
-    for m in u["memory"][:10]:
-        st.write(m)
+    st.subheader("📈 発話評価")
+    for e in u["eval_log"][-5:]:
+        st.write(e)
 
-# ------------------------
 # ループ
-# ------------------------
 time.sleep(0.3)
 st.rerun()
-
 
