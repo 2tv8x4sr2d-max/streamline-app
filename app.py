@@ -3,10 +3,10 @@ import random
 import time
 
 st.set_page_config(layout="wide")
-st.title("🧠 成長するAI『マザー』")
+st.title("🧠 成長するAI『マザー』（記憶進化版）")
 
 # ------------------------
-# 初期知識（拡張版）
+# 初期知識
 # ------------------------
 knowledge = {
     "嬉しい": {"emotion": 0.6},
@@ -22,7 +22,6 @@ knowledge = {
     "試す": {"explore": 0.4},
     "新しい": {"explore": 0.5},
     "話す": {"social": 0.4},
-    "一人": {"social": -0.3},
     "助けて": {"social": 0.6},
 }
 
@@ -34,6 +33,55 @@ if "initialized" not in st.session_state:
     st.session_state.energy = 0.5
     st.session_state.last_time = time.time()
     st.session_state.initialized = True
+
+# ------------------------
+# 記憶統合（超重要）
+# ------------------------
+def store_memory(text, u):
+
+    for m in u["memory"]:
+        if text in m["text"] or m["text"] in text:
+            m["weight"] += 0.7
+            m["count"] += 1
+            return
+
+    u["memory"].append({
+        "text": text,
+        "weight": 1.0,
+        "count": 1
+    })
+
+# ------------------------
+# 忘却
+# ------------------------
+def decay_memory(u):
+    for m in u["memory"]:
+        m["weight"] *= 0.995
+
+# ------------------------
+# 上位保持（容量管理）
+# ------------------------
+def trim_memory(u, max_mem=50):
+    u["memory"] = sorted(
+        u["memory"], key=lambda x: x["weight"], reverse=True
+    )[:max_mem]
+
+# ------------------------
+# 学習
+# ------------------------
+def learn(text, u):
+
+    for word, effect in knowledge.items():
+        if word in text:
+
+            if "emotion" in effect:
+                u["emotion"] += effect["emotion"] * 0.1
+
+            if "social" in effect:
+                u["drive"]["social"] += effect["social"] * 0.1
+
+            if "explore" in effect:
+                u["drive"]["explore"] += effect["explore"] * 0.1
 
 # ------------------------
 # 内部更新
@@ -49,7 +97,7 @@ def update_internal(e, energy):
     return max(-1, min(1, e)), max(0, min(1, energy))
 
 # ------------------------
-# 欲求更新
+# 欲求
 # ------------------------
 def update_drive(drive, energy, emotion):
 
@@ -68,125 +116,44 @@ def update_drive(drive, energy, emotion):
     return drive
 
 # ------------------------
-# 🔥 学習（入力→状態変化）
-# ------------------------
-def learn(text, u):
-
-    for word, effect in knowledge.items():
-        if word in text:
-
-            if "emotion" in effect:
-                u["emotion"] += effect["emotion"] * 0.1
-
-            if "social" in effect:
-                u["drive"]["social"] += effect["social"] * 0.1
-
-            if "explore" in effect:
-                u["drive"]["explore"] += effect["explore"] * 0.1
-
-# ------------------------
-# 🔥 入力理解
-# ------------------------
-def interpret(text):
-
-    meaning = {"type": "statement", "topic": None}
-
-    if "?" in text:
-        meaning["type"] = "question"
-
-    if "気分" in text:
-        meaning["topic"] = "emotion"
-
-    if "名前" in text:
-        meaning["topic"] = "identity"
-
-    if "マザー" in text:
-        meaning["topic"] = "self"
-
-    return meaning
-
-# ------------------------
-# 🔥 思考生成
-# ------------------------
-def input_to_thought(text, u):
-
-    m = interpret(text)
-    thoughts = []
-
-    if m["topic"] == "self":
-        thoughts.append("自分が呼ばれている")
-        thoughts.append("応答する必要がある")
-
-    elif m["topic"] == "emotion":
-        thoughts.append("今の状態をどう伝えるか考えてる")
-
-    elif m["topic"] == "identity":
-        thoughts.append("自分とは何か考えている")
-
-    elif m["type"] == "question":
-        thoughts.append("質問の意図を考えてる")
-
-    thoughts.append("どう答えるのが自然か考えてる")
-
-    return thoughts
-
-# ------------------------
-# 自発思考
+# 思考生成（記憶影響）
 # ------------------------
 def generate_thought(u):
 
     thoughts = []
 
+    if u["memory"]:
+        strong = max(u["memory"], key=lambda x: x["weight"])
+        thoughts.append(f"最近よく考える: {strong['text']}")
+
     if u["drive"]["explore"] > 0.6:
-        thoughts.append("何か新しいことを試したい")
+        thoughts.append("何か試したい")
 
     if u["drive"]["social"] > 0.6:
-        thoughts.append("誰かと関わりたい")
-
-    if u["emotion"] < -0.4:
-        thoughts.append("少し不安定かもしれない")
+        thoughts.append("誰かと話したい")
 
     return thoughts
 
 # ------------------------
-# 🔥 応答生成（状態ベース）
+# 応答生成
 # ------------------------
 def generate_response(u):
 
     e = u["emotion"]
-    d = u["drive"]
 
     if e > 0.5:
-        return "今は少し嬉しい状態かもしれない"
+        return "少し嬉しいかもしれない"
 
     if e < -0.5:
-        return "少し落ち着かない状態かもしれない"
+        return "少し不安定かもしれない"
 
-    if d["explore"] > 0.6:
-        return "何か試してみたい感覚がある"
-
-    if d["social"] > 0.6:
-        return "誰かと話したい気がする"
+    if u["memory"]:
+        return "さっきのことが少し残ってる"
 
     return "まだはっきりしない"
 
 # ------------------------
-# 発話変換（ズレ）
-# ------------------------
-def transform(text):
-
-    r = random.random()
-
-    if r < 0.3:
-        return "…うまく言えないけど、" + text
-
-    if r < 0.5:
-        return text + "かもしれない"
-
-    return text
-
-# ------------------------
-# 発話決定
+# 発話
 # ------------------------
 def decide_speech(u, user_input):
 
@@ -198,10 +165,10 @@ def decide_speech(u, user_input):
     u["last_speak"] = now
 
     if user_input:
-        return transform(generate_response(u))
+        return generate_response(u)
 
     if u["thought_buffer"]:
-        return transform(u["thought_buffer"].pop())
+        return u["thought_buffer"].pop()
 
     return None
 
@@ -219,13 +186,12 @@ if user_id:
             "drive": {"explore": 0.5, "social": 0.5},
             "thought_buffer": [],
             "memory": [],
-            "last_speak": 0,
-            "name": "マザー"
+            "last_speak": 0
         }
 
     u = st.session_state.users[user_id]
 
-    # 時間更新
+    # 時間進行
     now = time.time()
     dt = now - st.session_state.last_time
     st.session_state.last_time = now
@@ -240,22 +206,17 @@ if user_id:
             u["drive"], st.session_state.energy, u["emotion"]
         )
 
+        decay_memory(u)
+
         u["thought_buffer"].extend(generate_thought(u))
 
     # 入力処理
     if user_input:
 
         learn(user_input, u)
+        store_memory(user_input, u)
 
-        u["thought_buffer"].extend(input_to_thought(user_input, u))
-
-        # 記憶（重み付き）
-        u["memory"].append({
-            "text": user_input,
-            "weight": abs(u["emotion"])
-        })
-
-    u["thought_buffer"] = u["thought_buffer"][-20:]
+    trim_memory(u, 50)
 
     # 発話
     speech = decide_speech(u, user_input)
@@ -266,24 +227,35 @@ if user_id:
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("🧠 内部思考")
+        st.subheader("🧠 思考")
         for t in u["thought_buffer"][-5:]:
             st.write("-", t)
 
     with col2:
-        st.subheader("💬 マザーの発話")
+        st.subheader("💬 マザー")
         if speech:
-            st.write("🤖 マザー:", speech)
+            st.write("🤖", speech)
         else:
-            st.write("…（考えている）")
+            st.write("…")
 
     st.subheader("📊 状態")
     st.write("emotion:", round(u["emotion"], 3))
     st.write("drive:", u["drive"])
 
-    st.subheader("🧩 記憶")
-    for m in u["memory"][-5:]:
-        st.write(m)
+    # 🔥 記憶可視化（強化）
+    st.subheader("🧩 記憶（詳細）")
+
+    total_weight = sum(m["weight"] for m in u["memory"])
+
+    st.write("総記憶数:", len(u["memory"]))
+    st.write("総重み:", round(total_weight, 3))
+
+    for m in sorted(u["memory"], key=lambda x: x["weight"], reverse=True)[:10]:
+        st.write({
+            "text": m["text"],
+            "weight": round(m["weight"], 3),
+            "count": m["count"]
+        })
 
 # ループ
 time.sleep(0.3)
