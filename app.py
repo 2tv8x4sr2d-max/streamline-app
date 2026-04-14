@@ -3,7 +3,7 @@ import random
 import time
 
 st.set_page_config(layout="wide")
-st.title("🧠 成長するAI『マザー』（感情統合モデル）")
+st.title("🧠 成長するAI『マザー』（統合思考モデル）")
 
 # ------------------------
 # 初期化
@@ -12,6 +12,25 @@ if "initialized" not in st.session_state:
     st.session_state.users = {}
     st.session_state.last_time = time.time()
     st.session_state.initialized = True
+
+# ------------------------
+# エージェント生成
+# ------------------------
+def create_agent():
+    return {
+        "memory": [],
+        "word_memory": {},
+        "uncertainty": 0.3,
+        "emotion": {"joy": 0.0, "anger": 0.0, "sadness": 0.0, "fun": 0.0},
+        "thought_buffer": [],
+        "speech_log": []
+    }
+
+if "agents" not in st.session_state:
+    st.session_state.agents = {
+        "A": create_agent(),
+        "B": create_agent()
+    }
 
 # ------------------------
 # 記憶
@@ -33,48 +52,47 @@ def store_memory(text, u):
 # 言語学習
 # ------------------------
 def learn_words(text, u):
-
     words = text.replace("？", "").replace("?", "").split()
-
-    if "word_memory" not in u:
-        u["word_memory"] = {}
-
     for w in words:
         if len(w) < 2:
             continue
-
-        if w not in u["word_memory"]:
-            u["word_memory"][w] = 1
-        else:
-            u["word_memory"][w] += 1
+        u["word_memory"][w] = u["word_memory"].get(w, 0) + 1
 
 # ------------------------
-# 🔥 感情更新（追加）
+# 🔥 感情（改善版）
 # ------------------------
 def update_emotion(text, u):
 
-    if "嬉しい" in text or "楽しい" in text:
-        u["emotion"]["joy"] += 0.2
-        u["emotion"]["fun"] += 0.2
+    self_related = "自分" in text or "俺" in text
+    other_related = "君" in text or "あなた" in text
 
-    if "嫌い" in text or "ムカつく" in text:
-        u["emotion"]["anger"] += 0.3
+    delta = {"joy":0,"anger":0,"sadness":0,"fun":0}
+
+    if "嬉しい" in text:
+        delta["joy"] += 0.3 if self_related else 0.1
+
+    if "楽しい" in text:
+        delta["fun"] += 0.3 if self_related else 0.1
 
     if "悲しい" in text:
-        u["emotion"]["sadness"] += 0.3
+        delta["sadness"] += 0.3
 
-    # 減衰
+    if "嫌い" in text:
+        delta["anger"] += 0.3
+
+    # 記憶影響
+    if any("嫌い" in m["text"] for m in u["memory"]):
+        delta["anger"] += 0.05
+
     for k in u["emotion"]:
-        u["emotion"][k] *= 0.95
-        u["emotion"][k] = min(1.0, max(0.0, u["emotion"][k]))
+        u["emotion"][k] += delta[k]
+        u["emotion"][k] *= 0.97
+        u["emotion"][k] = max(0, min(1, u["emotion"][k]))
 
 # ------------------------
-# 記憶サンプリング
+# 記憶サンプル
 # ------------------------
 def sample_memories(u):
-    if not u["memory"]:
-        return []
-
     return sorted(u["memory"], key=lambda x: x["weight"], reverse=True)[:2]
 
 # ------------------------
@@ -87,16 +105,12 @@ def interpret(text):
         intent["type"] = "question"
         intent["uncertainty"] += 0.2
 
-    if len(text.strip()) <= 3:
-        intent["uncertainty"] += 0.2
-
     return intent
 
 # ------------------------
-# 深層心理
+# 深層思考
 # ------------------------
 def deep_think(u):
-
     thoughts = []
 
     if random.random() < 0.5:
@@ -108,49 +122,38 @@ def deep_think(u):
     if u["memory"]:
         thoughts.append("記憶に引っ張られている")
 
-    # 🔥 感情影響
-    if u["emotion"]["anger"] > 0.5:
-        thoughts.append("イライラしている")
-
-    if u["emotion"]["joy"] > 0.5:
-        thoughts.append("少し満たされている")
-
-    if u["emotion"]["sadness"] > 0.5:
-        thoughts.append("落ち込んでいる")
-
     return thoughts
 
 # ------------------------
-# 表面思考
+# 🔥 思考統合（追加）
 # ------------------------
-def surface_think(deep_thoughts):
+def integrate_thoughts(a, b):
 
-    surface = []
+    combined = []
 
-    for t in deep_thoughts:
+    combined += a
 
+    for t in b:
         if "理解できていない" in t:
-            surface.append("うまく整理できていない")
-
-        elif "試したい" in t:
-            surface.append("何か行動したい")
-
-        elif "記憶" in t:
-            surface.append("過去を思い出している")
-
-        elif "イライラ" in t:
-            surface.append("少し苛立ちがある")
-
-        elif "満たされている" in t:
-            surface.append("少し落ち着いている")
-
-        elif "落ち込んでいる" in t:
-            surface.append("気分が沈んでいる")
-
+            combined.append("整理しようとしている")
         else:
-            surface.append(t)
+            combined.append(t)
 
-    return surface
+    return combined
+
+# ------------------------
+# 表層
+# ------------------------
+def surface_think(deep):
+    out = []
+    for t in deep:
+        if "理解できていない" in t:
+            out.append("整理できていない")
+        elif "試したい" in t:
+            out.append("行動したい")
+        else:
+            out.append(t)
+    return out
 
 # ------------------------
 # 発話
@@ -158,32 +161,21 @@ def surface_think(deep_thoughts):
 def verbalize(thoughts, intent, u):
 
     mems = sample_memories(u)
-    words = list(u.get("word_memory", {}).keys())
+    words = list(u["word_memory"].keys())
 
     if words and random.random() < 0.7:
-        chosen = random.sample(words, min(2, len(words)))
-        combined = "と".join(chosen)
+        combined = "と".join(random.sample(words, min(2, len(words))))
     elif mems:
         combined = "と".join([m["text"] for m in mems])
     else:
-        combined = random.choice(thoughts) if thoughts else "何か"
+        combined = "何か"
 
     if intent["type"] == "question":
-        if u["uncertainty"] > 0.6:
-            line = combined + "が関係ありそうだけどまだ繋がらない"
-        else:
-            line = combined + "について考えてる途中"
+        line = combined + "について考えてる"
     else:
-        r = random.random()
+        line = combined + "が気になる"
 
-        if r < 0.33:
-            line = combined + "が気になる"
-        elif r < 0.66:
-            line = combined + "を試してみたい"
-        else:
-            line = combined + "がよくわからない"
-
-    # 🔥 感情ニュアンス
+    # 感情反映
     if u["emotion"]["anger"] > 0.5:
         line += "（少し苛立ち）"
     elif u["emotion"]["joy"] > 0.5:
@@ -196,68 +188,43 @@ def verbalize(thoughts, intent, u):
 # ------------------------
 # UI
 # ------------------------
-user_id = st.text_input("あなたの名前")
-user_input = st.text_input("マザーに話しかける")
+user_input = st.text_input("話しかける")
 
-if user_id:
+A = st.session_state.agents["A"]
+B = st.session_state.agents["B"]
 
-    if user_id not in st.session_state.users:
-        st.session_state.users[user_id] = {
-            "memory": [],
-            "word_memory": {},
-            "uncertainty": 0.3,
-            "emotion": {"joy": 0.0, "anger": 0.0, "sadness": 0.0, "fun": 0.0},
-            "thought_buffer": [],
-            "speech_log": []
-        }
+if user_input:
 
-    u = st.session_state.users[user_id]
+    store_memory(user_input, A)
+    learn_words(user_input, A)
+    update_emotion(user_input, A)
 
-    if user_input:
-        store_memory(user_input, u)
-        learn_words(user_input, u)
-        update_emotion(user_input, u)
+    intent = interpret(user_input)
 
-        intent = interpret(user_input)
-        u["uncertainty"] = intent["uncertainty"]
+    # 🔥 2脳思考
+    deep_A = deep_think(A)
+    deep_B = deep_think(B)
 
-        deep = deep_think(u)
-        surface = surface_think(deep)
+    deep = integrate_thoughts(deep_A, deep_B)
+    surface = surface_think(deep)
 
-        speech = verbalize(surface, intent, u)
+    speech = verbalize(surface, intent, A)
 
-        u["thought_buffer"] += surface
-        u["speech_log"].append(speech)
+    A["speech_log"].append(speech)
 
-    # ------------------------
-    # 表示
-    # ------------------------
-    col1, col2 = st.columns(2)
+# ------------------------
+# 表示
+# ------------------------
+st.subheader("💬 マザー")
+for s in A["speech_log"][-5:]:
+    st.write(s)
 
-    with col1:
-        st.subheader("🧠 深層心理")
-        for t in deep[-5:] if user_input else []:
-            st.write("-", t)
+st.subheader("🧠 思考")
+for t in surface[-5:] if user_input else []:
+    st.write("-", t)
 
-        st.subheader("🧩 表面思考")
-        for t in u["thought_buffer"][-5:]:
-            st.write("-", t)
+st.subheader("📊 感情")
+st.write(A["emotion"])
 
-    with col2:
-        st.subheader("💬 発話履歴")
-        for s in u["speech_log"][-5:]:
-            st.write("-", s)
-
-    st.subheader("📊 感情状態")
-    st.write(u["emotion"])
-
-    st.subheader("🧩 記憶")
-    for m in sorted(u["memory"], key=lambda x: x["weight"], reverse=True)[:5]:
-        st.write(m)
-
-    st.subheader("🔤 言語記憶")
-    st.write(u["word_memory"])
-
-# ループ
 time.sleep(0.3)
 st.rerun()
