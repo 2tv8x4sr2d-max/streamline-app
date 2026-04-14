@@ -280,8 +280,8 @@ st.rerun()
 
     st.subheader("🧩 記憶（詳細）")
 
-    for m in sorted(u["memory"], key=lambda x: x["weight"], reverse=True)[:10]:
-        st.write({
+    for m in sorted(
+        u["memory"], key=lambda x: x["weight"], reverse=True)[:10]:st.write({
           text": m["text"],
             "weight": round(m["weight"], 3),
             "count": m["count"],
