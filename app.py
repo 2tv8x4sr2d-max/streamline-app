@@ -3,7 +3,7 @@ import random
 import time
 
 st.set_page_config(layout="wide")
-st.title("🧠 成長するAI『マザー』（安定版）")
+st.title("🧠 成長するAI『マザー』（階層思考モデル）")
 
 # ------------------------
 # 初期化
@@ -30,7 +30,7 @@ def store_memory(text, u):
     })
 
 # ------------------------
-# 🔥 言語学習（追加）
+# 言語学習
 # ------------------------
 def learn_words(text, u):
 
@@ -73,31 +73,54 @@ def interpret(text):
     return intent
 
 # ------------------------
-# 思考
+# 🔥 深層心理（追加）
 # ------------------------
-def think(u):
+def deep_think(u):
+
     thoughts = []
-
-    if u["memory"]:
-        thoughts.append("記憶を参照している")
-
-    if u["uncertainty"] > 0.6:
-        thoughts.append("よくわからない")
 
     if random.random() < 0.5:
         thoughts.append("何か試したい")
 
+    if u["uncertainty"] > 0.6:
+        thoughts.append("理解できていない")
+
+    if u["memory"]:
+        thoughts.append("記憶に引っ張られている")
+
     return thoughts
 
 # ------------------------
-# 🔥 発話（改良済み）
+# 🔥 表面思考（追加）
+# ------------------------
+def surface_think(deep_thoughts):
+
+    surface = []
+
+    for t in deep_thoughts:
+
+        if "理解できていない" in t:
+            surface.append("うまく整理できていない")
+
+        elif "試したい" in t:
+            surface.append("何か行動したい")
+
+        elif "記憶" in t:
+            surface.append("過去を思い出している")
+
+        else:
+            surface.append(t)
+
+    return surface
+
+# ------------------------
+# 発話
 # ------------------------
 def verbalize(thoughts, intent, u):
 
     mems = sample_memories(u)
     words = list(u.get("word_memory", {}).keys())
 
-    # 単語優先
     if words and random.random() < 0.7:
         chosen = random.sample(words, min(2, len(words)))
         combined = "と".join(chosen)
@@ -106,7 +129,6 @@ def verbalize(thoughts, intent, u):
     else:
         combined = random.choice(thoughts) if thoughts else "何か"
 
-    # 質問
     if intent["type"] == "question":
         if u["uncertainty"] > 0.6:
             line = combined + "が関係ありそうだけどまだ繋がらない"
@@ -122,7 +144,6 @@ def verbalize(thoughts, intent, u):
         else:
             line = combined + "がよくわからない"
 
-    # 感情補正
     e = u.get("emotion", 0)
 
     if e > 0.4:
@@ -152,7 +173,6 @@ if user_id:
 
     u = st.session_state.users[user_id]
 
-    # 入力処理
     if user_input:
         store_memory(user_input, u)
         learn_words(user_input, u)
@@ -160,10 +180,13 @@ if user_id:
         intent = interpret(user_input)
         u["uncertainty"] = intent["uncertainty"]
 
-        thoughts = think(u)
-        speech = verbalize(thoughts, intent, u)
+        # 🔥 ここだけ変更（階層化）
+        deep = deep_think(u)
+        surface = surface_think(deep)
 
-        u["thought_buffer"] += thoughts
+        speech = verbalize(surface, intent, u)
+
+        u["thought_buffer"] += surface
         u["speech_log"].append(speech)
 
     # ------------------------
@@ -172,7 +195,11 @@ if user_id:
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("🧠 内部思考")
+        st.subheader("🧠 深層心理")
+        for t in deep[-5:] if user_input else []:
+            st.write("-", t)
+
+        st.subheader("🧩 表面思考")
         for t in u["thought_buffer"][-5:]:
             st.write("-", t)
 
@@ -185,11 +212,11 @@ if user_id:
     st.write("uncertainty:", round(u["uncertainty"], 3))
     st.write("emotion:", round(u["emotion"], 3))
 
-    st.subheader("🧩 記憶（文章）")
+    st.subheader("🧩 記憶")
     for m in sorted(u["memory"], key=lambda x: x["weight"], reverse=True)[:5]:
         st.write(m)
 
-    st.subheader("🔤 言語記憶（単語）")
+    st.subheader("🔤 言語記憶")
     st.write(u["word_memory"])
 
 # ループ
