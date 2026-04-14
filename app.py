@@ -39,7 +39,6 @@ def interpret(text):
         intent["uncertainty"] += 0.2
 
     return intent
-
 # ------------------------
 # 思考
 # ------------------------
@@ -62,23 +61,50 @@ def think(u):
 # ------------------------
 def verbalize(thoughts, intent, u):
 
-    if u["uncertainty"] > 0.7:
-        return "まだうまく理解できてない"
+    mems = sample_memories(u)
 
-    base = random.choice(thoughts) if thoughts else "何かある"
+    if mems:
+        combined = "と".join([m["text"] for m in mems])
+    else:
+        combined = random.choice(thoughts) if thoughts else "何か"
 
-    patterns = [
-        "{}気がする",
-        "{}かもしれない",
-        "なんとなく{}",
-        "{}感じがある"
-    ]
-
+    # 質問対応
     if intent["type"] == "question":
-        return "まだはっきりしないけど、少し考えてる"
 
-    return random.choice(patterns).format(base)
+        if u["uncertainty"] > 0.6:
+            line = combined + "が関係ありそうだけどまだ繋がらない"
+        else:
+            line = combined + "について考えてる途中"
 
+    else:
+        r = random.random()
+
+        if r < 0.33:
+            line = combined + "が頭に残ってる"
+        elif r < 0.66:
+            line = "なんとなく" + combined + "を考えてる"
+        else:
+            line = combined + "が少し引っかかってる"
+
+    # 🔥 ここ追加（重要）
+    e = u.get("emotion", 0)
+
+    if e > 0.4:
+        line += "（前向き）"
+    elif e < -0.4:
+        line += "（違和感）"
+
+    return line
+    
+    # 🔥 通常発話（テンプレではなく揺らす）
+    r = random.random()
+
+    if r < 0.33:
+        return combined + "が頭に残ってる"
+    elif r < 0.66:
+        return "なんとなく" + combined + "を考えてる"
+    else:
+        return combined + "が少し引っかかってる"
 # ------------------------
 # 自己評価
 # ------------------------
