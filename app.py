@@ -265,6 +265,7 @@ if user_id:
     st.write("drive:", u["drive"])
 
     st.subheader("🧩 記憶")
+    
     for m in sorted(u["memory"], key=lambda x: x["weight"], reverse=True)[:10]:
         st.write({
             "text": m["text"],
